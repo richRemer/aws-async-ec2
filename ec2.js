@@ -2,58 +2,87 @@ const paginate = require("aws-async-paginate");
 const NO_REGION = "us-east-1";
 
 class EC2 {
-    constructor(sdk) {
-        this.sdk = sdk;
-        this.ec2 = new sdk.EC2();
-        this.region = {any: new sdk.EC2({region: NO_REGION})};
+  constructor(sdk) {
+    this.sdk = sdk;
+    this.ec2 = new sdk.EC2();
+    this.region = {any: new sdk.EC2({region: NO_REGION})};
+  }
+
+  selectRegion(region) {
+    if (!this.region[region]) {
+      this.region[region] = new Region(this, region);
     }
 
-    selectRegion(region) {
-        if (!this.region[region]) {
-            this.region[region] = new Region(this, region);
-        }
+    return this.region[region];
+  }
 
-        return this.region[region];
-    }
-
-    async *describeRegions() {
-        const regions = await this.region.any.describeRegions().promise();
-        yield* regions.Regions;
-    }
+  async *describeRegions() {
+    const regions = await this.region.any.describeRegions().promise();
+    yield* regions.Regions;
+  }
 }
 
 module.exports = {EC2};
 
 class Region {
-    constructor(ec2, region) {
-        this.ec2 = new ec2.sdk.EC2({region});
-        this.region = region;
-    }
+  constructor(ec2, region) {
+    this.ec2 = new ec2.sdk.EC2({region});
+    this.region = region;
+  }
 
-    async *describeImages() {
-        const fn = params => this.ec2.describeImages(params);
-        yield* paginate(fn, "Images");
-    }
+  async createTags({
+    Resources,
+    Tags
+  }) {
+    return this.ec2.createTags({Resources, Tags}).promise();
+  }
 
-    async *describeInstances() {
-        const fn = params => this.ec2.describeInstances(params);
+  async *describeImages({
+    ...params
+  }={}) {
+    const fn = opts => this.ec2.describeImages({...params, ...opts});
+    yield* paginate(fn, "Images");
+  }
 
-        for await (const reservation of paginate(fn, "Reservations")) {
-            yield* reservation.Instances;
-        }
-    }
+  async *describeInstances({
+    ...params
+  }={}) {
+    const fn = opts => this.ec2.describeInstances({...params, ...opts});
 
-    async *describeSubnets() {
-        const fn = params => this.ec2.describeSubnets(params);
-        yield* paginate(fn, "Subnets");
+    for await (const reservation of paginate(fn, "Reservations")) {
+      yield* reservation.Instances;
     }
+  }
 
-    async runInstances(InstanceType, ImageId, params={}) {
-        params = {MinCount: 1, MaxCount: 1, ...params, InstanceType, ImageId};
-        return this.ec2.runInstances(params).promise();
-    }
+  async *describeSubnets() {
+    const fn = params => this.ec2.describeSubnets(params);
+    yield* paginate(fn, "Subnets");
+  }
 
-    async terminateInstances(...InstanceIds) {
-        return this.ec2.terminateInstances({InstanceIds}).promise();
-    }
+  async modifyInstanceAttribute({
+    InstanceId,
+    ...params
+  }={}) {
+    params = {InstanceId, ...params};
+    return this.ec2.modifyInstanceAttribute(params).promise();
+  }
+
+  async runInstances({
+    ImageId,
+    InstanceType,
+    MaxCount=1,
+    MinCount=1,
+    ...params
+  }={}) {
+    params = {ImageId, InstanceType, MaxCount, MinCount, ...params};
+    return this.ec2.runInstances(params).promise();
+  }
+
+  async terminateInstances(...InstanceIds) {
+    return this.ec2.terminateInstances({InstanceIds}).promise();
+  }
+
+  async waitFor(trigger, {...params}={}) {
+    return this.ec2.waitFor(trigger, params).promise();
+  }
 }

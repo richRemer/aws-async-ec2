@@ -1,6 +1,6 @@
 {
   "name": "aws-async-ec2",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "async wrapper for aws-sdk EC2 API",
   "main": "ec2.js",
   "scripts": {
